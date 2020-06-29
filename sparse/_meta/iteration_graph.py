@@ -1,81 +1,65 @@
-from typing import Tuple
+import typing
+import collections.abc as cabc
 from collections import defaultdict
 
 
-class IndexVar(object):
-    def __init__(self, name):
-        assert name is not None
-        self._name = name
-
-    @property
-    def name(self):
-        return self._name
-
-    def __str__(self):
-        return f"index({self._name})"
-
-    def __repr__(self):
-        return self.__str__()
-
-
-class Node(IndexVar):
-    def __init__(self, *, name=None):
-        assert name is not None
-        super().__init__(name)
-
-    @property
-    def root(self):
-        return False
-
-    @classmethod
-    def from_iv(cls, iv):
-        assert isinstance(iv, IndexVar)
-        return cls(name=iv.name)
-
-
-class RootNode(Node):
-    def __init__(self, *, name):
-        super().__init__(name=name)
-
-    @property
-    def root(self):
-        return True
-
-    def __str__(self):
-        return f"root({self.name})"
-
-
-class Edge(object):
-    def __init__(self, u, v, label=None):
-        assert isinstance(u, Node)
-        assert isinstance(v, Node)
-        self.u = u
-        self.v = v
-        self.label = label
-
-
 class Access(object):
-    def __init__(self, *args, name=None):
-        self._elems = tuple(args)
-        self._name = name
+    # Access((0, 3, 4, 5), ndim=4)
+    def __init__(self, idxs, *, ndim, is_output=False):
+        assert isinstance(ndim, int)
+        assert ndim >= 0
+        assert isinstance(idxs, cabc.Sequence)
+        for idx in idxs:
+            assert isinstance(idx, int)
+
+        self._idxs = idxs
+        self._ndim = ndim
+        self._is_output = is_output
+
+    @property
+    def ndim(self) -> int:
+        return self._ndim
+
+    @property
+    def idxs(self):
+        return self._idxs
+
+    @property
+    def is_output(self):
+        return self._is_output
+
+    def broadcast(self, ndim):
+        ndim_diff = ndim - self.ndim
+        if ndim_diff < 0:
+            raise ValueError("Cannot make access smaller")
+
+        idxs = []
+        for idx in self.idxs:
+            idxs.append(idx + ndim_diff)
+
+        return Access(idxs, ndim=ndim, is_output=self.is_output)
 
     @classmethod
-    def from_numpy_notation(cls, *, notation: Tuple, name: str):
-
-        char_code = 105  # 'i'
-        _vars = []
-
-        for e in notation:
-            if isinstance(e, slice):
+    def from_numpy_notation(cls, key: typing.Tuple, *, ndim, is_output=False):
+        idx = 0
+        idxs = []
+        for e in key:
+            if isinstance(e, slice) and e == slice(None):
                 # slice(...)
-                iv = IndexVar(chr(char_code))
-                char_code += 1
-                _vars.append(iv)
+                idxs.append(idx)
+                idx += 1
             elif e is None:
-                char_code += 1
+                idx += 1
             else:
                 raise NotImplementedError(e)
-        return Access(*_vars, name=name)
+        if len(idxs) > ndim:
+            raise ValueError(f"too many indices for Access.")
+
+        while len(idxs) < ndim:
+            idxs.append(idx)
+            idx += 1
+
+        return Access(idxs, ndim=len(key) + ndim - len(idxs), is_output=is_output)
 
     def __add__(self, other):
         return IterationGraph(self, other)
@@ -90,41 +74,47 @@ class Access(object):
         return IterationGraph(self, other)
 
     def __iter__(self):
-        yield from self._elems
+        yield from self._idxs
+
+    def __getitem__(self, i):
+        return self._idxs[i]
 
     def __str__(self):
-        s = f"Access[{self.name}]"
-        ivs = tuple(map(lambda x: x.name, self._elems))
-        s += "(" + ", ".join(ivs) + ")"
-        return s
+        return f"Access({self.idxs}, ndim={self.ndim}, is_output={self.is_output})"
 
-    @property
-    def name(self):
-        return self._name
+    __repr__ = __str__
 
-    def iterwise(self):
-        root = RootNode(name=self.name)
-        node = Node.from_iv(self._elems[0])
-        yield Edge(root, node, label=f"{self.name}1")
+    def pairwise(self):
+        ret = {(-1, self.idxs[0])}
+        for i in range(0, len(self.idxs) - 1):
+            ret.add((self.idxs[i], self.idxs[i + 1]))
 
-        for idx in range(1, len(self._elems)):
-            node2 = Node.from_iv(self._elems[idx])
-            yield Edge(node, node2, label=f"{self.name}{idx+1}")
-            node = node2
+        return ret
 
 
 class IterationGraph(object):
     def __init__(self, *args):
-        self._graph = defaultdict(list)
-        for access in args:
-            assert isinstance(access, Access)
-            self._iterate_in_access(access)
+        self._args: typing.List[Access] = []
 
-    def _iterate_in_access(self, access):
-        for edge in access.iterwise():
-            assert isinstance(edge, Edge)
-            u = edge.u
-            self._graph[u].append(edge)
+        for arg in args:
+            if isinstance(arg, Access):
+                self._args.append(arg)
+            elif isinstance(arg, IterationGraph):
+                self._args.extend(arg._args)
+            else:
+                raise ValueError(arg)
+        self._graph = defaultdict(list)
+
+    def _broadcast(self):
+        new_args = []
+        ndim_max = max(a.ndim for a in self._args)
+        self._args = [a.broadcast(ndim_max) for a in self._args]
+        return self
+
+    def _compute(self):
+        for access in self._args:
+            for (u, v) in access.pairwise():
+                self._graph[u].append(v)
 
     def has_cycle(self):
         raise NotImplementedError()
@@ -135,13 +125,10 @@ class IterationGraph(object):
     def __str__(self):
         s = ""
         for u, l in self._graph.items():
-            for edge in l:
-                v = edge.v
-                label = edge.label
-                s += f"{u} ~~{label}~~> {v}\n"
+            for v in l:
+                s += f"{u} ~~> {v}\n"
         return s
 
-    def _to_graphviz(self):
         from graphviz import Digraph
 
         g = Digraph("G")
