@@ -7,8 +7,11 @@ import numpy as np
 import dask
 import dask.base
 
+from numba import typed
+from numba.core import types
 from .dense_level import Dense
 from .compressed_level import Compressed
+from .iteration_graph import Access
 from .sparsedim import SparseDim, InlineAssembly, AppendAssembly
 import uuid
 
@@ -135,15 +138,16 @@ class Tensor(TensorBase):
     def insert_data(self, *, coords, data):
         # coords = [(i1, i2, ..., iN)]
         # data = [x1, x2, ..., xN]
-        self._data = data
+        self._data = typed.List(data)
 
         # size of the previous level
         szkm1 = 1
+        levels = []
         for k, level in enumerate(self._fmt.levels):
             if level == Dense:
                 fn = lambda: Dense(N=self.shape[k])
             elif level == Compressed:
-                fn = lambda: Compressed(pos=[], crd=[])
+                fn = lambda: Compressed(pos=typed.List.empty_list(types.int64), crd=typed.List.empty_list(types.int64))
             else:
                 raise NotImplementedError(level)
 
@@ -152,7 +156,7 @@ class Tensor(TensorBase):
             if isinstance(level, InlineAssembly):
                 szk = level.size(szkm1)
                 level.insert_init(szkm1, szk)
-                for pkm1, ikm1 in self._iterate(self._levels):
+                for pkm1, ikm1 in self._iterate(levels):
                     if ikm1 not in group:
                         continue
                     g = group[ikm1]
@@ -163,7 +167,7 @@ class Tensor(TensorBase):
                 szk = 0
                 level.append_init(szkm1, szk)
                 pkbegin = 0
-                for pkm1, ikm1 in self._iterate(self._levels):
+                for pkm1, ikm1 in self._iterate(levels):
                     if ikm1 not in group:
                         continue
                     g = group[ikm1]
@@ -178,7 +182,8 @@ class Tensor(TensorBase):
                 raise NotImplementedError(level)
 
             szkm1 = szk
-            self._levels.append(level)
+            levels.append(level)
+        self._levels = tuple(levels)
 
     @staticmethod
     def _iterate(levels, pkm1=0, i=()):

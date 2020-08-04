@@ -168,6 +168,11 @@ def impl_dense_insert_finalize(self, szkm1: int, szk: int) -> None:
     return Dense.insert_finalize
 
 
+@extending.overload_method(DenseType, "iterate")
+def impl_dense_iterate(self, pkm1, i):
+    return ValueIterable.iterate
+
+
 @extending.typeof_impl.register(Dense)
 def typeof_index(val, c):
     N_type = types.int64

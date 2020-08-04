@@ -1,6 +1,7 @@
 from abc import abstractmethod
 
 from llvmlite import ir
+from numba import typed
 from numba.core import types, cgutils, extending
 from numba.core.datamodel import registry, models
 from .sparsedim import PositionIterable, AppendAssembly
@@ -179,17 +180,17 @@ extending.make_attribute_wrapper(CompressedType, "crd", "crd")
 
 
 @extending.overload_method(CompressedType, "pos_bounds")
-def impl_pos_bounds(self, pkm1: int) -> Tuple[int, int]:
+def impl_pos_bounds(self, pkm1: int) -> Callable:
     return Compressed.pos_bounds
 
 
 @extending.overload_method(CompressedType, "pos_iter")
-def impl_pos_iter(self, pkm1: int) -> Tuple[int, int]:
+def impl_pos_iter(self, pkm1: int) -> Callable:
     return Compressed.pos_iter
 
 
 @extending.overload_method(CompressedType, "pos_access")
-def impl_pos_access(self, pk: int, i: Tuple[int, ...]) -> Tuple[int, bool]:
+def impl_pos_access(self, pk: int, i: Tuple[int, ...]) -> Callable:
     return Compressed.pos_access
 
 
@@ -211,6 +212,11 @@ def impl_append_init(self, szkm1: int, szk: int) -> Callable:
 @extending.overload_method(CompressedType, "append_finalize")
 def impl_append_finalize(self, szkm1: int, szk: int) -> Callable:
     return Compressed.append_finalize
+
+
+@extending.overload_method(CompressedType, "iterate")
+def impl_compressed_iterate(self, pkm1, i):
+    return PositionIterable.iterate
 
 
 @extending.typeof_impl.register(Compressed)
