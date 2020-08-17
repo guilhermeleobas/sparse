@@ -7,7 +7,7 @@ from sparse._meta.dense_level import Dense
 from sparse._meta.compressed_level import Compressed
 from sparse._meta.format import Tensor, Format
 
-@njit(no_cfunc_wrapper=True)
+@njit
 def matvec_mul_kernel(
     m: Tuple[Dense, Compressed],
     v: Tuple[Compressed],
@@ -15,7 +15,7 @@ def matvec_mul_kernel(
     v_data: typed.List,
     shape
 ):
-    out = (Dense(N=shape[1], ordered=True, unique=True), typed.List.empty_list(float64))
+    out = (Dense(N=shape[1], ordered=True, unique=True), np.zeros((1024,), dtype=np.float64))
     out[0].insert_init(1, shape[1])
     p1begin, p1end = m[0].coord_bounds(())
     for i in range(p1begin, p1end):
@@ -26,7 +26,7 @@ def matvec_mul_kernel(
             j, found = m[1].pos_access(jA, (i,))
             val += m_data[jA] * v_data[j]
         out[0].insert_coord(i, i)
-        out[1].append(val)
+        # out[1].append(val)
     out[0].insert_finalize(1, shape[1])
     return out
 

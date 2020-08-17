@@ -138,7 +138,7 @@ class Tensor(TensorBase):
     def insert_data(self, *, coords, data):
         # coords = [(i1, i2, ..., iN)]
         # data = [x1, x2, ..., xN]
-        self._data = typed.List(data)
+        self._data = np.array(data)
 
         # size of the previous level
         szkm1 = 1
@@ -147,7 +147,7 @@ class Tensor(TensorBase):
             if level == Dense:
                 fn = lambda: Dense(N=self.shape[k])
             elif level == Compressed:
-                fn = lambda: Compressed(pos=typed.List.empty_list(types.int64), crd=typed.List.empty_list(types.int64))
+                fn = lambda: Compressed(pos=np.array([], dtype=np.intp), crd=np.array([], dtype=np.intp))
             else:
                 raise NotImplementedError(level)
 

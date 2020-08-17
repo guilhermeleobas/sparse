@@ -128,47 +128,47 @@ def sparse_dense_constructor(context, builder, sig, args):
 extending.make_attribute_wrapper(DenseType, "N", "N")
 
 
-@extending.overload_method(DenseType, "locate")
+@extending.overload_method(DenseType, "locate", inline='always')
 def impl_dense_locate(self, pkm1: int, i: Tuple[int, ...]) -> Tuple[int, bool]:
     return Dense.locate
 
 
-@extending.overload_method(DenseType, "coord_bounds")
+@extending.overload_method(DenseType, "coord_bounds", inline='always')
 def impl_dense_coord_bounds(self, i: Tuple[int, ...]) -> Tuple[int, int]:
     return Dense.coord_bounds
 
 
-@extending.overload_method(DenseType, "coord_iter")
+@extending.overload_method(DenseType, "coord_iter", inline='always')
 def impl_dense_coord_bounds(self, i: Tuple[int, ...]) -> Tuple[int, int]:
     return Dense.coord_iter
 
 
-@extending.overload_method(DenseType, "coord_access")
+@extending.overload_method(DenseType, "coord_access", inline='always')
 def impl_dense_coord_access(self, pkm1: int, i: Tuple[int, ...]) -> Tuple[int, bool]:
     return Dense.coord_access
 
 
-@extending.overload_method(DenseType, "size")
+@extending.overload_method(DenseType, "size", inline='always')
 def impl_dense_size(self, szkm1: int) -> int:
     return Dense.size
 
 
-@extending.overload_method(DenseType, "insert_coord")
+@extending.overload_method(DenseType, "insert_coord", inline='always')
 def impl_dense_insert_coord(self, pk: int, ik: int) -> None:
     return Dense.insert_coord
 
 
-@extending.overload_method(DenseType, "insert_init")
+@extending.overload_method(DenseType, "insert_init", inline='always')
 def impl_dense_insert_init(self, szkm1: int, szk: int) -> None:
     return Dense.insert_init
 
 
-@extending.overload_method(DenseType, "insert_finalize")
+@extending.overload_method(DenseType, "insert_finalize", inline='always')
 def impl_dense_insert_finalize(self, szkm1: int, szk: int) -> None:
     return Dense.insert_finalize
 
 
-@extending.overload_method(DenseType, "iterate")
+@extending.overload_method(DenseType, "iterate", inline='always')
 def impl_dense_iterate(self, pkm1, i):
     return ValueIterable.iterate
 

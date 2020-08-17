@@ -1,5 +1,8 @@
 from abc import abstractmethod
 
+from numba.np.numpy_support import from_dtype
+import numpy as np
+
 from llvmlite import ir
 from numba import typed
 from numba.core import types, cgutils, extending
@@ -57,14 +60,19 @@ class Compressed(PositionIterable, AppendAssembly):
         return self.crd[pk], True
 
     def append_coord(self, pk: int, ik: int) -> None:
-        self.crd.append(ik)
+        # self.crd.append(ik)
+        if pk >= len(self.crd):
+            crd_old = self.crd
+            self.crd = np.zeros(len(self.crd) * 2, dtype=np.intp)
+            self.crd[:len(crd_old)] = crd_old
+        self.crd[pk] = ik
 
     def append_edges(self, pkm1: int, pkbegin: int, pkend: int) -> None:
         self.pos[pkm1 + 1] = pkend - pkbegin
 
     def append_init(self, szkm1: int, szk: int) -> None:
-        for _ in range(szkm1 + 1):
-            self.pos.append(0)
+        self.pos = np.zeros((szkm1 + 1), dtype=np.intp)
+        self.crd = np.zeros(1024, dtype=np.intp)
 
     def append_finalize(self, szkm1: int, szk: int) -> None:
         cumsum: int = self.pos[0]
@@ -141,8 +149,8 @@ class CompressedType(PositionIterableType, AppendAssemblyType):
 class CompressedModel(models.StructModel):
     def __init__(self, dmm, fe_type: CompressedType):
         members = [
-            ("pos", types.ListType(fe_type.pos_type)),
-            ("crd", types.ListType(fe_type.crd_type)),
+            ("pos", types.Array(fe_type.pos_type, 1, 'C')),
+            ("crd", types.Array(fe_type.crd_type, 1, 'C')),
         ]
         super().__init__(dmm, fe_type, members)
 
@@ -179,42 +187,42 @@ extending.make_attribute_wrapper(CompressedType, "pos", "pos")
 extending.make_attribute_wrapper(CompressedType, "crd", "crd")
 
 
-@extending.overload_method(CompressedType, "pos_bounds")
+@extending.overload_method(CompressedType, "pos_bounds", inline='always')
 def impl_pos_bounds(self, pkm1: int) -> Callable:
     return Compressed.pos_bounds
 
 
-@extending.overload_method(CompressedType, "pos_iter")
+@extending.overload_method(CompressedType, "pos_iter", inline='always')
 def impl_pos_iter(self, pkm1: int) -> Callable:
     return Compressed.pos_iter
 
 
-@extending.overload_method(CompressedType, "pos_access")
+@extending.overload_method(CompressedType, "pos_access", inline='always')
 def impl_pos_access(self, pk: int, i: Tuple[int, ...]) -> Callable:
     return Compressed.pos_access
 
 
-@extending.overload_method(CompressedType, "append_coord")
+@extending.overload_method(CompressedType, "append_coord", inline='always')
 def impl_append_coord(self, pk: int, ik: int) -> Callable:
     return Compressed.append_coord
 
 
-@extending.overload_method(CompressedType, "append_edges")
+@extending.overload_method(CompressedType, "append_edges", inline='always')
 def impl_append_edges(self, pkm1: int, pkbegin: int, pkend: int) -> Callable:
     return Compressed.append_edges
 
 
-@extending.overload_method(CompressedType, "append_init")
+@extending.overload_method(CompressedType, "append_init", inline='always')
 def impl_append_init(self, szkm1: int, szk: int) -> Callable:
     return Compressed.append_init
 
 
-@extending.overload_method(CompressedType, "append_finalize")
+@extending.overload_method(CompressedType, "append_finalize", inline='always')
 def impl_append_finalize(self, szkm1: int, szk: int) -> Callable:
     return Compressed.append_finalize
 
 
-@extending.overload_method(CompressedType, "iterate")
+@extending.overload_method(CompressedType, "iterate", inline='always')
 def impl_compressed_iterate(self, pkm1, i):
     return PositionIterable.iterate
 
@@ -226,8 +234,8 @@ def typeof_index(val, c):
     ordered = val.ordered
     unique = val.unique
     # pos and crd should always be TypedLists?
-    pos_type = val.pos._dtype
-    crd_type = val.crd._dtype
+    pos_type = from_dtype(val.pos.dtype)
+    crd_type = from_dtype(val.crd.dtype)
     return CompressedType(
         full=full, ordered=ordered, unique=unique, pos_type=pos_type, crd_type=crd_type
     )
@@ -291,8 +299,8 @@ def unbox_dense(typ: CompressedType, obj, c):
     pos_type = compressed.pos.type  # {i8*, i8*}
     crd_type = compressed.crd.type  # {i8*, i8*}
 
-    compressed.pos = c.unbox(types.ListType(typ.pos_type), pos_obj).value
-    compressed.crd = c.unbox(types.ListType(typ.crd_type), crd_obj).value
+    compressed.pos = c.unbox(types.Array(typ.pos_type, 1, 'C'), pos_obj).value
+    compressed.crd = c.unbox(types.Array(typ.crd_type, 1, 'C'), crd_obj).value
 
     c.pyapi.decref(pos_obj)
     c.pyapi.decref(crd_obj)
