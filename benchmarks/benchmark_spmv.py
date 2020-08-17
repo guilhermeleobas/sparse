@@ -15,8 +15,9 @@ def matvec_mul_kernel(
     v_data: typed.List,
     shape
 ):
-    out = (Dense(N=shape[1], ordered=True, unique=True), np.zeros((1024,), dtype=np.float64))
-    out[0].insert_init(1, shape[1])
+    out_levels = Dense(N=shape[1], ordered=True, unique=True),
+    out_data = np.zeros((1024,), dtype=np.float64)
+    out_levels[0].insert_init(1, shape[1])
     p1begin, p1end = m[0].coord_bounds(())
     for i in range(p1begin, p1end):
         p1, _ = m[0].coord_access(0, (0,))
@@ -25,10 +26,15 @@ def matvec_mul_kernel(
         for jA in range(p2begin, p2end):
             j, found = m[1].pos_access(jA, (i,))
             val += m_data[jA] * v_data[j]
-        out[0].insert_coord(i, i)
-        # out[1].append(val)
-    out[0].insert_finalize(1, shape[1])
-    return out
+        out_levels[0].insert_coord(i, i)
+        if len(out_data) <= i:
+            out_old = out_data
+            out_data = np.zeros(len(out_data) * 2, dtype=np.float64)
+            out_data[:len(out_old)] = out_old
+        out_data[i] = val
+            
+    out_levels[0].insert_finalize(1, shape[1])
+    return out_levels + (out_data,)
 
 def generate_random_data(shape : Tuple[int, int], seed : int, density=0.01) -> Tuple[List[Tuple[int, int]], List[int], List[int]]:
     size = np.prod(shape)
@@ -54,7 +60,7 @@ def create_tensors(shape: Tuple[int, int], multi_idx: List[Tuple[int, int]], dat
 
 class SpMVSuite:
     def setup(self):
-        shape = (1000, 1000)
+        shape = (10000, 10000)
         multi_idx, data_1d, data_2d = generate_random_data(shape, seed=1337)
         self.sp_m, self.sp_v, self.m, self.v = create_tensors(shape, multi_idx, data_2d, data_1d)
         self.shape = shape
